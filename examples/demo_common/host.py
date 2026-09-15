@@ -102,10 +102,11 @@ def _lifespan(on_startup: Sequence[Callable[[], Awaitable[None]]]):
 
 
 def build_app(title: str, on_startup: Sequence[Callable[[], Awaitable[None]]] = ()) -> FastAPI:
-    """A FastAPI app that answers only to loopback host names (plus ``DEMO_ALLOWED_HOSTS``,
-    for a deployment that puts its own authentication in front) and to any localhost
-    origin. Rejecting other Host headers stops DNS-rebinding, which CORS does not. Logs go
-    to stderr at ``DEMO_LOG_LEVEL``: ``INFO`` is a line per model call, ``DEBUG`` adds the bodies."""
+    """A FastAPI app that answers to loopback host names, ``*.vercel.app``, and
+    ``DEMO_ALLOWED_HOSTS`` (for a deployment that puts its own authentication in front).
+    CORS allows localhost ports and ``*.vercel.app`` by default; override with
+    ``DEMO_CORS_ORIGIN_REGEX``. Logs go to stderr at ``DEMO_LOG_LEVEL``: ``INFO`` is a
+    line per model call, ``DEBUG`` adds the bodies."""
     logging.basicConfig(
         level=os.environ.get("DEMO_LOG_LEVEL", "INFO").upper(),
         format="%(levelname)s %(name)s: %(message)s",
@@ -116,14 +117,26 @@ def build_app(title: str, on_startup: Sequence[Callable[[], Awaitable[None]]] = 
         host.strip().rsplit(":", 1)[0] if ":" in host.strip() else host.strip()
         for host in os.environ.get("DEMO_ALLOWED_HOSTS", "").split(",")
     ]
+    # Vercel preview/production hosts plus any DEMO_ALLOWED_HOSTS values.
+    allowed_hosts = [
+        "localhost",
+        "127.0.0.1",
+        "*.vercel.app",
+        *(host for host in extra_hosts if host),
+    ]
+    # Local demos stay on loopback; set DEMO_CORS_ORIGIN_REGEX to tighten or widen.
+    cors_origin_regex = os.environ.get(
+        "DEMO_CORS_ORIGIN_REGEX",
+        r"https://([a-z0-9-]+\.)*vercel\.app|http://(localhost|127\.0\.0\.1):\d+",
+    )
     app = FastAPI(title=title, version="0.1.0", lifespan=_lifespan(on_startup))
     app.add_middleware(
         TrustedHostMiddleware,
-        allowed_hosts=["localhost", "127.0.0.1", *(host for host in extra_hosts if host)],
+        allowed_hosts=allowed_hosts,
     )
     app.add_middleware(
         CORSMiddleware,
-        allow_origin_regex=r"http://(localhost|127\.0\.0\.1):\d+",
+        allow_origin_regex=cors_origin_regex,
         allow_methods=["*"],
         allow_headers=["*"],
     )
