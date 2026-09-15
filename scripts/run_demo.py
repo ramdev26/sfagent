@@ -35,11 +35,18 @@ import urllib.request
 from pathlib import Path
 
 if hasattr(sys.stdout, "reconfigure"):
-    sys.stdout.reconfigure(line_buffering=True)
+    sys.stdout.reconfigure(line_buffering=True, encoding="utf-8", errors="replace")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+# Windows consoles default to a legacy code page; force UTF-8 for child pipes too.
+os.environ.setdefault("PYTHONIOENCODING", "utf-8")
+os.environ.setdefault("PYTHONUTF8", "1")
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 EXAMPLES_DIR = REPO_ROOT / "examples"
 NEXT = EXAMPLES_DIR / "node_modules" / ".bin" / "next"
+# On Windows CreateProcess cannot run the extensionless npm shim; use next.cmd.
+NEXT_BIN = NEXT.with_suffix(".cmd") if sys.platform == "win32" else NEXT
 
 VERTICALS: dict[str, dict[str, object]] = {
     "retail": {
@@ -51,6 +58,10 @@ VERTICALS: dict[str, dict[str, object]] = {
     "travel": {"api_port": 8001, "store": "ACME Travel"},
     "telecom": {"api_port": 8002, "store": "ACME Mobile"},
     "entertainment": {"api_port": 8003, "store": "ACME Tickets"},
+    "supplement_factory": {
+        "api_port": 8004,
+        "store": "Supplement Factory",
+    },
 }
 
 PYTHON_MODULES = (
@@ -167,6 +178,20 @@ def spawn(command: list[str], cwd: Path, env: dict[str, str] | None = None) -> s
     )
 
 
+def stop_process(process: subprocess.Popen, *, force: bool = False) -> None:
+    """Stop a spawned child. Unix uses the process group; Windows uses terminate/kill."""
+    if process.poll() is not None:
+        return
+    if sys.platform == "win32":
+        if force:
+            process.kill()
+        else:
+            process.terminate()
+        return
+    sig = signal.SIGKILL if force else signal.SIGTERM
+    os.killpg(os.getpgid(process.pid), sig)
+
+
 def start_api(vertical: str, port: int, federated: bool) -> subprocess.Popen:
     env = os.environ.copy()
     if federated:
@@ -187,9 +212,10 @@ def start_api(vertical: str, port: int, federated: bool) -> subprocess.Popen:
 
 def start_web(app_dir: Path, port: int, api_port: int, prod: bool) -> subprocess.Popen:
     env = {**os.environ, "NEXT_PUBLIC_API_URL": f"http://localhost:{api_port}"}
+    next_bin = str(NEXT_BIN if NEXT_BIN.exists() else NEXT)
     if prod:
-        subprocess.run([str(NEXT), "build"], cwd=app_dir, check=True, env=env)
-    return spawn([str(NEXT), "start" if prod else "dev", "--port", str(port)], app_dir, env)
+        subprocess.run([next_bin, "build"], cwd=app_dir, check=True, env=env)
+    return spawn([next_bin, "start" if prod else "dev", "--port", str(port)], app_dir, env)
 
 
 def reset_persisted_memory(vertical: str) -> str:
@@ -342,16 +368,15 @@ def main() -> int:
         return 0
     finally:
         for _, process in processes:
-            if process.poll() is None:
-                with contextlib.suppress(ProcessLookupError, PermissionError):
-                    os.killpg(os.getpgid(process.pid), signal.SIGTERM)
+            with contextlib.suppress(ProcessLookupError, PermissionError, OSError):
+                stop_process(process)
         deadline = time.monotonic() + 10
         for _, process in processes:
             try:
                 process.wait(timeout=max(0.1, deadline - time.monotonic()))
             except subprocess.TimeoutExpired:
-                with contextlib.suppress(ProcessLookupError, PermissionError):
-                    os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+                with contextlib.suppress(ProcessLookupError, PermissionError, OSError):
+                    stop_process(process, force=True)
 
 
 if __name__ == "__main__":

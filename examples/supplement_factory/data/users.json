@@ -1,0 +1,14 @@
+{
+  "users": [
+    {
+      "user_id": "demo-user",
+      "display_name": "Guest",
+      "loyalty_tier": "Guest",
+      "default_location": "Colombo",
+      "preferences": {
+        "interest": "performance nutrition and recovery",
+        "goal": "authentic supplements with next-day delivery across Sri Lanka"
+      }
+    }
+  ]
+}

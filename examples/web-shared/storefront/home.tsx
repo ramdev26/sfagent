@@ -47,7 +47,7 @@ export function Starters({ items }: { items: Starter[] }) {
           <span className="grid h-[30px] w-[30px] shrink-0 place-items-center rounded-lg bg-(--accent-soft) text-(--accent)">
             <Icon name={item.icon} size={16} />
           </span>
-          <span className="min-w-0 flex-1 text-[14px] leading-snug text-(--ink)">{item.prompt}</span>
+          <span className="min-w-0 flex-1 text-[14px] leading-snug break-words text-(--ink)">{item.prompt}</span>
           <Icon name="arrow-right" size={15} className="shrink-0 text-(--ink-faint) transition-colors group-hover:text-(--accent)" />
         </button>
       ))}

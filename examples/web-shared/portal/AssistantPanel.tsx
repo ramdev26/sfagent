@@ -101,11 +101,11 @@ export function AssistantPanel({
                       type="button"
                       onClick={() => void chat.send(starter)}
                       disabled={chat.busy || !chat.ready}
-                      className="group flex items-center gap-3 rounded-xl border border-(--line) bg-(--card) px-3.5 py-2.5 text-left text-[13.5px] text-(--ink) shadow-(--shadow-sm) transition hover:border-(--accent) hover:bg-(--accent-soft) disabled:opacity-50"
+                      className="group flex items-start gap-3 rounded-xl border border-(--line) bg-(--card) px-3.5 py-2.5 text-left text-[13.5px] leading-snug text-(--ink) shadow-(--shadow-sm) transition hover:border-(--accent) hover:bg-(--accent-soft) disabled:opacity-50"
                     >
-                      <Icon name="spark" size={14} className="text-(--accent)" />
-                      <span className="min-w-0 flex-1">{starter}</span>
-                      <Icon name="arrow-right" size={14} className="text-(--ink-faint) transition group-hover:text-(--accent-ink)" />
+                      <Icon name="spark" size={14} className="mt-0.5 shrink-0 text-(--accent)" />
+                      <span className="min-w-0 flex-1 whitespace-normal break-words">{starter}</span>
+                      <Icon name="arrow-right" size={14} className="mt-0.5 shrink-0 text-(--ink-faint) transition group-hover:text-(--accent-ink)" />
                     </button>
                   ))}
                 </div>

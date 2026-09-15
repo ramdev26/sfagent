@@ -1,0 +1,34 @@
+{
+  "policies": [
+    {
+      "policy_id": "authenticity",
+      "title": "Authenticity guarantee",
+      "category": "trust",
+      "content": "Supplement Factory is an authorized distributor and stocks only authentic brands sourced through official channels. Products are lab-tested for purity. Contact sales@supplementfactory.lk or +94 77 556 4422 with authenticity questions."
+    },
+    {
+      "policy_id": "shipping",
+      "title": "Delivery & shipping",
+      "category": "shipping",
+      "content": "Next-day island-wide delivery across Sri Lanka when you order before 12PM. There are 09 retail outlets for pickup. Main location: Main Street, Colombo 11. Shipping fees and cutoffs may vary by destination; the assistant quotes the store's published next-day promise for eligible orders."
+    },
+    {
+      "policy_id": "returns",
+      "title": "Returns & exchanges",
+      "category": "returns",
+      "content": "Unopened supplements in original condition may be returned or exchanged according to Supplement Factory's store policy. Opened or damaged products are typically not eligible. Contact the store before returning so staff can arrange the correct outlet or courier handoff."
+    },
+    {
+      "policy_id": "payments",
+      "title": "Payments",
+      "category": "payments",
+      "content": "Checkout completes on supplementfactory.lk. The shopping assistant builds your cart and hands you to the store's own checkout — it never charges a card. Installment options such as Koko may appear on product pages when the store offers them."
+    },
+    {
+      "policy_id": "contact",
+      "title": "Contact & outlets",
+      "category": "support",
+      "content": "Phone +94 77 556 4422, email sales@supplementfactory.lk, web https://supplementfactory.lk/. Trusted in Sri Lanka since 2010 with multiple outlets island-wide."
+    }
+  ]
+}

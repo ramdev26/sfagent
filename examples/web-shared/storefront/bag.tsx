@@ -43,7 +43,7 @@ export function BagPanel({
         >
           {count}
         </span>
-        <IconButton icon="x" label={`Close ${title.toLowerCase()}`} onClick={closePanel} className="ml-auto xl:hidden" />
+        <IconButton icon="x" label={`Close ${title.toLowerCase()}`} onClick={closePanel} className="ml-auto" />
       </div>
       <div className="panel-scroll min-h-0 flex-1 overflow-y-auto px-[18px] py-3.5">
         {isEmpty ? (

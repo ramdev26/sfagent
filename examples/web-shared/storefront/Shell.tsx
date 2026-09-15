@@ -157,9 +157,10 @@ export function StoreShell<V extends string>({
             <button
               ref={bagButtonRef}
               type="button"
-              onClick={() => onPanelOpenChange(true)}
-              aria-label={`Open ${bag.label.toLowerCase()}, ${bag.count} ${bag.noun}${bag.count === 1 ? "" : "s"}`}
-              className="flex h-[34px] items-center gap-2 rounded-full bg-(--ink) pl-3 pr-1.5 text-[13px] font-semibold text-(--surface) transition hover:brightness-110 xl:hidden"
+              onClick={() => onPanelOpenChange(!panelOpen)}
+              aria-label={`${panelOpen ? "Close" : "Open"} ${bag.label.toLowerCase()}, ${bag.count} ${bag.noun}${bag.count === 1 ? "" : "s"}`}
+              aria-expanded={panelOpen}
+              className="flex h-[34px] items-center gap-2 rounded-full bg-(--ink) pl-3 pr-1.5 text-[13px] font-semibold text-(--surface) transition hover:brightness-110"
             >
               <Icon name="bag" size={16} />
               <span className="hidden sm:inline">{bag.label}</span>
@@ -210,25 +211,22 @@ export function StoreShell<V extends string>({
             </div>
           </div>
 
-          <div
-            onClick={closePanel}
-            aria-hidden
-            className={`fixed inset-0 z-40 bg-black/35 transition-opacity duration-300 xl:hidden ${
-              panelOpen ? "opacity-100" : "pointer-events-none opacity-0"
-            }`}
-          />
-          {/* Closed below xl the drawer is `invisible`: out of the focus order and the accessibility tree. */}
-          <aside
-            ref={panelRef}
-            aria-label={bag.label}
-            className={`fixed inset-y-0 right-0 z-50 flex w-[min(92vw,380px)] flex-col border-l border-(--line) bg-(--card) xl:visible xl:static xl:z-auto xl:w-[348px] xl:shrink-0 xl:translate-x-0 xl:shadow-none xl:transition-none ${
-              panelOpen
-                ? "visible translate-x-0 shadow-2xl [transition:transform_300ms]"
-                : "invisible translate-x-full [transition:transform_300ms,visibility_0s_linear_300ms]"
-            }`}
-          >
-            {panel}
-          </aside>
+          {panelOpen ? (
+            <>
+              <div
+                onClick={closePanel}
+                aria-hidden
+                className="fixed inset-0 z-40 bg-black/35 xl:hidden"
+              />
+              <aside
+                ref={panelRef}
+                aria-label={bag.label}
+                className="fixed inset-y-0 right-0 z-50 flex w-[min(92vw,380px)] flex-col border-l border-(--line) bg-(--card) shadow-2xl xl:static xl:z-auto xl:w-[348px] xl:shrink-0 xl:shadow-none"
+              >
+                {panel}
+              </aside>
+            </>
+          ) : null}
         </div>
         {accountOpen ? (
           <AccountSheet

@@ -89,25 +89,35 @@ export function AssistantRail({
     },
   };
   return (
-    <div
-      ref={railRef}
-      className={
-        fullscreen
-          ? "fixed inset-0 z-40"
-          : "fixed inset-y-0 right-0 z-30 w-[min(94vw,420px)] shadow-2xl lg:relative lg:z-auto lg:w-(--rail-w) lg:shrink-0 lg:shadow-none"
-      }
-      style={fullscreen ? undefined : ({ "--rail-w": `${width}px` } as CSSProperties)}
-    >
+    <>
       {fullscreen ? null : (
-        <div
-          role="separator"
-          aria-orientation="vertical"
-          aria-label="Resize assistant panel"
-          onPointerDown={beginResize}
-          className="absolute inset-y-0 left-0 z-10 hidden w-1.5 cursor-col-resize transition-colors hover:bg-(--line) lg:block"
+        <button
+          type="button"
+          aria-label="Close assistant"
+          onClick={controls.onClose}
+          className="fixed inset-0 z-20 bg-black/25 lg:hidden"
         />
       )}
-      {children(controls)}
-    </div>
+      <div
+        ref={railRef}
+        className={
+          fullscreen
+            ? "fixed inset-0 z-40"
+            : "fixed inset-y-0 right-0 z-30 w-[min(94vw,420px)] min-w-[min(94vw,360px)] shadow-2xl lg:relative lg:z-auto lg:w-(--rail-w) lg:min-w-[360px] lg:shrink-0 lg:shadow-none"
+        }
+        style={fullscreen ? undefined : ({ "--rail-w": `${width}px` } as CSSProperties)}
+      >
+        {fullscreen ? null : (
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Resize assistant panel"
+            onPointerDown={beginResize}
+            className="absolute inset-y-0 left-0 z-10 hidden w-1.5 cursor-col-resize transition-colors hover:bg-(--line) lg:block"
+          />
+        )}
+        {children(controls)}
+      </div>
+    </>
   );
 }

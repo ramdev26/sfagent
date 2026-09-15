@@ -55,10 +55,10 @@ export function PortalShell<V extends string>({
 }) {
   return (
     <div className="flex h-dvh bg-(--ground) text-(--ink)">
-      <aside className="hidden w-16 shrink-0 flex-col border-r border-(--line) bg-(--chrome) px-2 py-3.5 lg:flex xl:w-[220px] xl:px-3">
-        <div className="flex items-center gap-2.5 px-1 pb-4 xl:px-2">
+      <aside className="hidden w-[220px] shrink-0 flex-col border-r border-(--line) bg-(--chrome) px-3 py-3.5 lg:flex">
+        <div className="flex items-center gap-2.5 px-2 pb-4">
           {brand.mark}
-          <div className="hidden min-w-0 xl:block">
+          <div className="min-w-0">
             <div className="truncate text-[14px] font-semibold leading-tight">{brand.name}</div>
             <div className="truncate text-[12px] text-(--ink-soft)">{brand.detail}</div>
           </div>
@@ -81,13 +81,13 @@ export function PortalShell<V extends string>({
                 }`}
               >
                 <Icon name={item.icon} className={active ? "text-(--ink)" : "text-(--ink-soft)"} />
-                <span className="hidden min-w-0 flex-1 truncate xl:block">{item.label}</span>
+                <span className="min-w-0 flex-1 truncate">{item.label}</span>
                 {item.attention ? (
-                  <span className="absolute right-1 top-1 rounded-full bg-(--danger-soft) px-1.5 text-[11px] font-semibold text-(--danger) xl:static">
+                  <span className="rounded-full bg-(--danger-soft) px-1.5 text-[11px] font-semibold text-(--danger)">
                     {item.attention}
                   </span>
                 ) : item.count != null ? (
-                  <span className="hidden text-[12px] tabular-nums text-(--ink-soft) xl:inline">{item.count}</span>
+                  <span className="text-[12px] tabular-nums text-(--ink-soft)">{item.count}</span>
                 ) : null}
               </button>
             );
@@ -106,19 +106,19 @@ export function PortalShell<V extends string>({
           }`}
         >
           <Icon name="spark" className="text-(--accent)" />
-          <span className="hidden flex-1 xl:block">Assistant</span>
+          <span className="flex-1">Assistant</span>
           {assistantBusy ? (
-            <span className="relative hidden h-2 w-2 xl:flex" aria-label="Working">
+            <span className="relative flex h-2 w-2" aria-label="Working">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-(--accent) opacity-60" />
               <span className="relative inline-flex h-2 w-2 rounded-full bg-(--accent)" />
             </span>
           ) : assistantOpen ? (
-            <span className="hidden h-[7px] w-[7px] rounded-full bg-(--accent) shadow-[0_0_0_3px_var(--accent-soft)] xl:block" aria-hidden />
+            <span className="h-[7px] w-[7px] rounded-full bg-(--accent) shadow-[0_0_0_3px_var(--accent-soft)]" aria-hidden />
           ) : null}
         </button>
-        <div className="mt-auto flex items-center gap-2.5 border-t border-(--line) px-1 pt-3 xl:px-2">
+        <div className="mt-auto flex items-center gap-2.5 border-t border-(--line) px-2 pt-3">
           <Avatar name={operator.name} />
-          <div className="hidden min-w-0 xl:block">
+          <div className="min-w-0">
             <div className="truncate text-[13px] font-semibold leading-tight">{operator.name}</div>
             <div className="truncate text-[11.5px] text-(--ink-soft)">{operator.role}</div>
           </div>
