@@ -82,6 +82,22 @@ class SessionStore(Generic[StateT]):
         self.save(record)
         return record
 
+    def adopt(self, session_id: str, user_id: str) -> SessionRecord[StateT]:
+        """Bind a client-held session id to a fresh record on this process.
+
+        Serverless hosts (Vercel) do not share the in-memory store across isolates; the
+        portal keeps sending the same ``X-Session-Id``, so an unknown id is revived here
+        instead of failing every read with 401.
+        """
+        existing = self.read_state(session_id)
+        if existing is not None:
+            return self.require(session_id)
+        record = SessionRecord(
+            session_id=session_id, user_id=user_id, state=self._state_type()
+        )
+        self.save(record)
+        return record
+
     def require(self, session_id: str) -> SessionRecord[StateT]:
         stored = self.read_state(session_id)
         if stored is None:
@@ -158,12 +174,18 @@ class SessionStore(Generic[StateT]):
         ]
 
 
-def session_dependency(store: SessionStore[StateT], start_route: str) -> Any:
+def session_dependency(
+    store: SessionStore[StateT],
+    start_route: str,
+    *,
+    revive_user_id: str | None = None,
+) -> Any:
     """The parameter annotation every scoped route of one role declares: the header's
     session id, resolved to its record and written back before the response goes out
     (FastAPI's function scope; a streamed turn writes back again when its stream ends).
     ``start_route`` names the login route in the 401 detail; a write that another request
-    beat is a 409."""
+    beat is a 409. When ``revive_user_id`` is set, an unknown id is re-bound on this
+    process (for serverless hosts that do not share memory)."""
 
     def current_session(
         session_id: Annotated[str | None, Header(alias=SESSION_HEADER)] = None,
@@ -175,7 +197,9 @@ def session_dependency(store: SessionStore[StateT], start_route: str) -> Any:
         try:
             record = store.require(session_id)
         except UnknownSessionError as error:
-            raise HTTPException(status_code=401, detail="Unknown session") from error
+            if revive_user_id is None:
+                raise HTTPException(status_code=401, detail="Unknown session") from error
+            record = store.adopt(session_id, revive_user_id)
         yield record
         try:
             store.save(record)

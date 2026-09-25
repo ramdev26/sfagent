@@ -124,7 +124,9 @@ def build_merchant_router(
     ``portal_reads`` maps a path to a callable (sync or async) served as a scoped GET."""
     memory_store = cast(MemoryStore, agent.memory.store)
     sessions: SessionStore[MerchantSessionState] = SessionStore(MerchantSessionState)
-    CurrentSession = session_dependency(sessions, "/api/merchant/session")
+    CurrentSession = session_dependency(
+        sessions, "/api/merchant/session", revive_user_id=identity.merchant_id
+    )
     router = APIRouter()
 
     def context(record: MerchantRecord) -> MerchantSessionContext:
