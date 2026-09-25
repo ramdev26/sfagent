@@ -6,7 +6,7 @@
     "app.py": {
       "maxDuration": 300,
       "memory": 2048,
-      "excludeFiles": "{tests/**,**/tests/**,**/*.test.py,**/test_*.py,examples/*/storefront-web/**,examples/*/merchant-web/**,examples/web-shared/**,examples/retail/**,examples/entertainment/**,examples/telecom/**,examples/travel/**,shopping-agent/runtime-agent-sdk/**,merchant-agent/runtime-agent-sdk/**,plugins/**,docs/**,scripts/**,.venv/**,**/node_modules/**,**/.next/**}"
+      "excludeFiles": "{**/tests/**,**/*test*.py,examples/*/storefront-web/**,examples/*/merchant-web/**}"
     }
   }
 }
