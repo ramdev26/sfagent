@@ -1,12 +1,11 @@
 # Vercel API deploy only — Messages API path, no Agent SDK.
-# Keeps the function under Vercel's bundle size limit (Hobby ~225 MB).
-# Local demos still use requirements.txt / scripts/install.sh.
+# Non-editable installs so packages land in site-packages (required on Vercel).
 
--e ./commerce-common[examples]
--e ./shopping-agent/core
--e ./shopping-agent/runtime-messages-api
--e ./merchant-agent/core
--e ./merchant-agent/runtime-messages-api
+./commerce-common[examples]
+./shopping-agent/core
+./shopping-agent/runtime-messages-api
+./merchant-agent/core
+./merchant-agent/runtime-messages-api
 
 annotated-doc==0.0.5
 annotated-types==0.8.0
