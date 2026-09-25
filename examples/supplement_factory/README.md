@@ -39,6 +39,7 @@ Use **two Vercel projects** from the same GitHub repo ([ramdev26/sfagent](https:
 2. Settings:
    - **Root Directory**: leave empty (repo root)
    - Framework should detect **FastAPI** (`vercel.json` + `app.py`)
+   - Install uses `requirements-vercel.txt` (Messages API only; no Agent SDK — keeps under Hobby size limits)
 3. Environment variables:
 
 | Key | Value |
