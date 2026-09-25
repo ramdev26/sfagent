@@ -1,4 +1,5 @@
-# Keep the FastAPI function bundle small (Hobby limit ~225 MB).
+# Shared ignore for both Vercel projects. Do not ignore merchant-web or web-shared —
+# the portal project needs them. The API project excludes UI via functions.excludeFiles.
 .venv
 .env
 .env.*
@@ -11,9 +12,6 @@
 **/.next
 **/*.webp
 examples/*/storefront-web
-examples/*/merchant-web
-examples/web-shared
-examples/node_modules
 examples/retail
 examples/entertainment
 examples/telecom
