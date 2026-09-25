@@ -59,7 +59,11 @@ class MemorySeeder:
         await store.upsert_facts(user_id, facts)
         if self._marker is not None:
             users = self._seeded_users() | {user_id}
-            self._marker.write_text(json.dumps(sorted(users)), encoding="utf-8")
+            try:
+                self._marker.write_text(json.dumps(sorted(users)), encoding="utf-8")
+            except OSError:
+                # Serverless filesystems are read-only; in-memory stores reseed each boot.
+                pass
 
     async def seed_at_boot(self, store: MemoryStore) -> None:
         already = self._seeded_users()
