@@ -51,7 +51,9 @@ function briefing(data: OverviewResponse): string {
   const parts: string[] = [];
   if (snapshot.sales_change_pct != null) {
     const direction = snapshot.sales_change_pct >= 0 ? "up" : "down";
-    parts.push(`Sales are ${direction} ${formatChangePct(Math.abs(snapshot.sales_change_pct)).replace("+", "")} on the week.`);
+    parts.push(
+      `Sales are ${direction} ${formatChangePct(Math.abs(snapshot.sales_change_pct)).replace("+", "")} vs the same days last month.`,
+    );
   }
   const orders = needs_attention.order_issues.length;
   const listings = needs_attention.inventory.length;
@@ -255,7 +257,13 @@ export default function HomeView({
           />
           <StatTile
             label="Average order"
-            value={snapshot.average_order_value != null ? formatMoney(snapshot.average_order_value, currency) : "—"}
+            value={
+              snapshot.average_order_value != null
+                ? formatMoney(snapshot.average_order_value, currency, {
+                    whole: snapshot.average_order_value >= 1000,
+                  })
+                : "—"
+            }
             changePct={aovChangePct}
             points={values(data.trends?.average_order_value)}
             prior={values(data.trends_prior?.average_order_value)}

@@ -10,6 +10,7 @@ Promotions and campaigns are refused — WooCommerce has no first-class match he
 
 from __future__ import annotations
 
+import calendar
 import html
 import logging
 import os
@@ -682,22 +683,23 @@ class WooCommerceMerchant(MerchantBackend):
             sales = self._num(report.get("net_sales") or report.get("total_sales"))
             orders = int(self._num(report.get("total_orders")))
             note = "Net sales, month to date — same basis as WooCommerce Analytics."
-            try:
-                prior_start = start.replace(year=start.year - 1)
-                prior_end = end.replace(year=end.year - 1)
-            except ValueError:
-                prior_start = prior_end = None
-            if prior_start and prior_end:
-                prior = await self._sales_report(
-                    date_min=prior_start.isoformat(),
-                    date_max=prior_end.isoformat(),
-                )
-                if prior is not None:
-                    prior_sales = self._num(prior.get("net_sales") or prior.get("total_sales"))
-                    prior_orders = int(self._num(prior.get("total_orders")))
-                    sales_change_pct = self._pct_change(sales, prior_sales)
-                    orders_change_pct = self._pct_change(float(orders), float(prior_orders))
-                    compare_to = f"{prior_start.isoformat()}/{prior_end.isoformat()}"
+            # Same day-span last month (e.g. Oct 1–15 vs Sep 1–15), not year-over-year.
+            if start.month == 1:
+                prior_start = start.replace(year=start.year - 1, month=12, day=1)
+            else:
+                prior_start = start.replace(month=start.month - 1, day=1)
+            prior_last_day = calendar.monthrange(prior_start.year, prior_start.month)[1]
+            prior_end = prior_start.replace(day=min(end.day, prior_last_day))
+            prior = await self._sales_report(
+                date_min=prior_start.isoformat(),
+                date_max=prior_end.isoformat(),
+            )
+            if prior is not None:
+                prior_sales = self._num(prior.get("net_sales") or prior.get("total_sales"))
+                prior_orders = int(self._num(prior.get("total_orders")))
+                sales_change_pct = self._pct_change(sales, prior_sales)
+                orders_change_pct = self._pct_change(float(orders), float(prior_orders))
+                compare_to = f"{prior_start.isoformat()}/{prior_end.isoformat()}"
         else:
             paid = [
                 o

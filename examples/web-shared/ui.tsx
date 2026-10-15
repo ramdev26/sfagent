@@ -259,8 +259,10 @@ export function StatTile({
           </span>
         ) : null}
       </div>
-      <div className="mt-1.5 flex min-w-0 items-baseline gap-2">
-        <span className="min-w-0 truncate text-[22px] font-semibold leading-none tracking-[-0.02em] tabular-nums text-(--ink) sm:text-[26px]">{value}</span>
+      <div className="mt-1.5 flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
+        <span className="max-w-full text-[18px] font-semibold leading-tight tracking-[-0.02em] break-words tabular-nums text-(--ink) sm:text-[22px] xl:text-[24px]">
+          {value}
+        </span>
         <ChangeChip changePct={changePct} />
       </div>
       {points && points.length > 1 ? <Sparkline points={points} prior={prior} label={`${label} over the period`} className="mt-2" /> : null}
