@@ -52,7 +52,8 @@ from .sessions import SessionRecord, SessionStore, session_dependency
 
 MerchantRecord = SessionRecord[MerchantSessionState]
 
-_LISTINGS_CAP = 100
+# Portal Catalog needs the full merchant catalog (SF alone has 154 SKUs).
+_LISTINGS_CAP = 500
 
 
 class DemoMerchant(Protocol):
