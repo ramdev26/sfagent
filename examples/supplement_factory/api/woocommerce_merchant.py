@@ -131,8 +131,14 @@ class WooCommerceMerchant(MerchantBackend):
         await self._client.aclose()
 
     async def warm(self) -> None:
-        await self._refresh_listings()
-        await self._refresh_orders()
+        try:
+            await self._refresh_listings()
+        except Exception:
+            logger.exception("WooCommerce listing warm failed; continuing with empty catalog cache")
+        try:
+            await self._refresh_orders()
+        except Exception:
+            logger.exception("WooCommerce order warm failed; continuing with empty order cache")
 
     def warm_sync(self) -> None:
         import anyio
@@ -149,12 +155,13 @@ class WooCommerceMerchant(MerchantBackend):
         response.raise_for_status()
         return response.json()
 
-    async def _refresh_listings(self, pages: int = 3) -> None:
+    async def _refresh_listings(self, pages: int = 6) -> None:
         rows: list[dict[str, Any]] = []
+        # Prefer date order — popularity ranking has been 500ing on this store.
         for page in range(1, pages + 1):
             batch = await self._get(
                 "/products",
-                params={"per_page": 50, "page": page, "status": "any", "orderby": "popularity"},
+                params={"per_page": 50, "page": page, "status": "publish", "orderby": "date", "order": "desc"},
             )
             if not isinstance(batch, list) or not batch:
                 break
@@ -168,10 +175,10 @@ class WooCommerceMerchant(MerchantBackend):
             listings[listing.listing_id] = listing
         self._listings = listings
 
-    async def _refresh_orders(self, days: int = 30) -> None:
+    async def _refresh_orders(self, days: int = 30, pages: int = 10) -> None:
         after = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%dT00:00:00")
         rows: list[dict[str, Any]] = []
-        for page in range(1, 4):
+        for page in range(1, pages + 1):
             batch = await self._get(
                 "/orders",
                 params={
@@ -189,15 +196,41 @@ class WooCommerceMerchant(MerchantBackend):
                 break
         self._orders_cache = rows
 
+    async def _sales_report(self, days: int = 30) -> dict[str, Any] | None:
+        """WooCommerce admin-aligned totals (not capped by order page fetches)."""
+        end = datetime.now().date()
+        start = end - timedelta(days=days - 1)
+        try:
+            report = await self._get(
+                "/reports/sales",
+                params={
+                    "date_min": start.isoformat(),
+                    "date_max": end.isoformat(),
+                },
+            )
+        except Exception:
+            logger.exception("WooCommerce sales report failed")
+            return None
+        if isinstance(report, list) and report and isinstance(report[0], dict):
+            return report[0]
+        if isinstance(report, dict):
+            return report
+        return None
+
     def _map_listing(self, payload: dict[str, Any], *, details: bool) -> Listing | ListingDetails:
         listing_id = str(payload["id"])
         try:
             price = float(payload.get("price") or payload.get("regular_price") or 0)
         except (TypeError, ValueError):
             price = 0.0
-        stock = int(payload.get("stock_quantity") or 0) if payload.get("manage_stock") else (
-            0 if payload.get("stock_status") == "outofstock" else 25
-        )
+        if payload.get("manage_stock"):
+            stock = int(payload.get("stock_quantity") or 0)
+        elif payload.get("stock_status") == "outofstock":
+            stock = 0
+        else:
+            # Stock is not tracked in WooCommerce — do not invent a low number that
+            # trips low-stock alerts. Treat as adequately stocked.
+            stock = 999
         images = payload.get("images") or []
         image_url = images[0].get("src") if images and isinstance(images[0], dict) else None
         cats = payload.get("categories") or []
@@ -285,13 +318,32 @@ class WooCommerceMerchant(MerchantBackend):
         period = period or "last_30_days"
         if not self._orders_cache:
             await self._refresh_orders()
-        paid = [
-            o
-            for o in self._orders_cache
-            if str(o.get("status")) in {"processing", "completed", "on-hold"}
-        ]
-        sales = sum(float(o.get("total") or 0) for o in paid)
-        orders = len(paid)
+        report = await self._sales_report(30)
+        if report is not None:
+            try:
+                sales = float(report.get("total_sales") or report.get("net_sales") or 0)
+            except (TypeError, ValueError):
+                sales = 0.0
+            try:
+                orders = int(report.get("total_orders") or 0)
+            except (TypeError, ValueError):
+                orders = 0
+            note = (
+                "Sales and order counts from WooCommerce reports/sales (last 30 days). "
+                "Traffic and conversion need analytics."
+            )
+        else:
+            paid = [
+                o
+                for o in self._orders_cache
+                if str(o.get("status")) in {"processing", "completed", "on-hold"}
+            ]
+            sales = sum(float(o.get("total") or 0) for o in paid)
+            orders = len(paid)
+            note = (
+                "Sales summed from a capped WooCommerce order fetch; "
+                "reports/sales was unavailable. Traffic/conversion need analytics."
+            )
         aov = round(sales / orders, 2) if orders else None
         alerts_list = await self.get_inventory_alerts(session)
         issues = await self.get_order_issues(session)
@@ -309,7 +361,7 @@ class WooCommerceMerchant(MerchantBackend):
                 order_issues=len(issues),
                 pending_changes=len(self.ledger.pending()),
             ),
-            note="Traffic and conversion need analytics; sales are from WooCommerce orders.",
+            note=note,
         )
 
     async def query_metrics(

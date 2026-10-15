@@ -224,7 +224,7 @@ export default function HomeView({
 
       <ApprovalsBanner changes={pending} onReview={() => onAskAssistant("Walk me through the changes awaiting my approval and what each one would do.")} />
 
-      <Panel title="This week" subtitle={`${formatPeriodLabel(snapshot.period)}${comparison ? ` · against the ${comparison}` : ""}`} bodyClassName="pb-1">
+      <Panel title={formatPeriodLabel(snapshot.period)} subtitle={comparison ? `Against the ${comparison}` : snapshot.note ?? undefined} bodyClassName="pb-1">
         <StatStrip>
           <StatTile
             label="Sales"
