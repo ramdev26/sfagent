@@ -55,6 +55,14 @@ _TAG = re.compile(r"<[^>]+>")
 _WS = re.compile(r"\s+")
 _LOW_STOCK = 5
 
+# Full product payloads 500 on this store (plugin/theme bloat). Ask only for fields
+# ``_map_listing`` needs — that returns the full catalog (154 SKUs).
+_PRODUCT_FIELDS = (
+    "id,name,type,status,sku,price,regular_price,stock_quantity,stock_status,"
+    "manage_stock,categories,images,short_description,description,attributes,"
+    "parent_id,variations"
+)
+
 _WC_ORDER_STATUS: dict[str, OrderStatus] = {
     "pending": OrderStatus.PROCESSING,
     "processing": OrderStatus.PROCESSING,
@@ -156,30 +164,33 @@ class WooCommerceMerchant(MerchantBackend):
         response.raise_for_status()
         return response.json()
 
-    async def _refresh_listings(self, pages: int = 6) -> None:
+    async def _refresh_listings(self, pages: int = 20) -> None:
         rows: list[dict[str, Any]] = []
+        per_page = 100
         try:
-            # Prefer date order — popularity ranking has been 500ing on this store.
             for page in range(1, pages + 1):
                 batch = await self._get(
                     "/products",
                     params={
-                        "per_page": 50,
+                        "per_page": per_page,
                         "page": page,
-                        "status": "publish",
-                        "orderby": "date",
-                        "order": "desc",
+                        "status": "any",
+                        "_fields": _PRODUCT_FIELDS,
                     },
                 )
                 if not isinstance(batch, list) or not batch:
                     break
                 rows.extend(row for row in batch if isinstance(row, dict))
-                if len(batch) < 50:
+                if len(batch) < per_page:
                     break
         except Exception:
             logger.exception(
                 "WooCommerce /products list failed; building catalog from orders and top sellers"
             )
+            await self._refresh_listings_from_orders_and_sellers()
+            return
+        if not rows:
+            logger.warning("WooCommerce returned zero products; using order/top-seller fallback")
             await self._refresh_listings_from_orders_and_sellers()
             return
         listings: dict[str, ListingDetails] = {}
@@ -188,6 +199,7 @@ class WooCommerceMerchant(MerchantBackend):
             assert isinstance(listing, ListingDetails)
             listings[listing.listing_id] = listing
         self._listings = listings
+        logger.info("Catalog loaded %s listings from WooCommerce /products", len(listings))
 
     async def _refresh_listings_from_orders_and_sellers(self) -> None:
         """Degraded catalog when /products is down (common during WC critical errors)."""
@@ -527,7 +539,15 @@ class WooCommerceMerchant(MerchantBackend):
         if not results and q:
             # Live search when the warm cache misses.
             try:
-                rows = await self._get("/products", params={"search": query, "per_page": limit})
+                rows = await self._get(
+                    "/products",
+                    params={
+                        "search": query,
+                        "per_page": limit,
+                        "status": "any",
+                        "_fields": _PRODUCT_FIELDS,
+                    },
+                )
             except Exception:
                 logger.exception("WooCommerce listing search failed")
                 return []
@@ -547,7 +567,10 @@ class WooCommerceMerchant(MerchantBackend):
         if listing_id in self._listings:
             return self._listings[listing_id]
         try:
-            payload = await self._get(f"/products/{listing_id}")
+            payload = await self._get(
+                f"/products/{listing_id}",
+                params={"_fields": _PRODUCT_FIELDS},
+            )
         except httpx.HTTPStatusError as exc:
             if exc.response.status_code == 404:
                 return None
@@ -559,7 +582,14 @@ class WooCommerceMerchant(MerchantBackend):
         if details.has_options:
             try:
                 variations = await self._get(
-                    f"/products/{listing_id}/variations", params={"per_page": 50}
+                    f"/products/{listing_id}/variations",
+                    params={
+                        "per_page": 50,
+                        "_fields": (
+                            "id,name,status,sku,price,regular_price,stock_quantity,"
+                            "stock_status,manage_stock,attributes,image,parent_id"
+                        ),
+                    },
                 )
             except Exception:
                 variations = []
