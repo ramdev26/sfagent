@@ -178,6 +178,7 @@ class WooCommerceMerchant(MerchantBackend):
     async def _refresh_orders(self, days: int = 30, pages: int = 10) -> None:
         after = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%dT00:00:00")
         rows: list[dict[str, Any]] = []
+        # Pull paid-like statuses first so a page cap is not wasted on cancelled rows.
         for page in range(1, pages + 1):
             batch = await self._get(
                 "/orders",
@@ -187,6 +188,7 @@ class WooCommerceMerchant(MerchantBackend):
                     "after": after,
                     "orderby": "date",
                     "order": "desc",
+                    "status": "processing,completed,on-hold,pending,failed,cancelled",
                 },
             )
             if not isinstance(batch, list) or not batch:
@@ -200,21 +202,20 @@ class WooCommerceMerchant(MerchantBackend):
         """WooCommerce admin-aligned totals (not capped by order page fetches)."""
         end = datetime.now().date()
         start = end - timedelta(days=days - 1)
-        try:
-            report = await self._get(
-                "/reports/sales",
-                params={
-                    "date_min": start.isoformat(),
-                    "date_max": end.isoformat(),
-                },
-            )
-        except Exception:
-            logger.exception("WooCommerce sales report failed")
-            return None
-        if isinstance(report, list) and report and isinstance(report[0], dict):
-            return report[0]
-        if isinstance(report, dict):
-            return report
+        attempts: list[dict[str, Any]] = [
+            {"date_min": start.isoformat(), "date_max": end.isoformat()},
+            {"period": "month"},
+        ]
+        for params in attempts:
+            try:
+                report = await self._get("/reports/sales", params=params)
+            except Exception:
+                logger.exception("WooCommerce sales report failed params=%s", params)
+                continue
+            if isinstance(report, list) and report and isinstance(report[0], dict):
+                return report[0]
+            if isinstance(report, dict):
+                return report
         return None
 
     def _map_listing(self, payload: dict[str, Any], *, details: bool) -> Listing | ListingDetails:
