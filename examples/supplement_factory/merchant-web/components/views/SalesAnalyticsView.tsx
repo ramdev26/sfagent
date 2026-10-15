@@ -24,6 +24,7 @@ import type { SalesPeriodId, SalesPeriodSummary, TopSellerRow } from "@/lib/type
 
 const PERIOD_OPTIONS: { id: SalesPeriodId; label: string }[] = [
   { id: "month", label: "This month" },
+  { id: "prior_mtd", label: "Past month to date" },
   { id: "last_30_days", label: "Last 30 days" },
   { id: "last_month", label: "Last month" },
 ];
@@ -179,7 +180,11 @@ export default function SalesAnalyticsView({
   const ordersSeries = useMemo(() => period?.daily.map((day) => day.orders) ?? [], [period]);
 
   const compareHint =
-    periodId === "last_month" ? undefined : periodId === "month" ? "last month" : "last month";
+    periodId === "month"
+      ? "past month to date"
+      : periodId === "prior_mtd" || periodId === "last_30_days"
+        ? "full last month"
+        : undefined;
 
   return (
     <div className="ac-reveal flex flex-col gap-4">

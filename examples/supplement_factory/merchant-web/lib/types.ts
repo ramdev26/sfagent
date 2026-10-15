@@ -211,7 +211,7 @@ export interface AlertsResponse {
   order_issues: OrderIssue[];
 }
 
-export type SalesPeriodId = "month" | "last_month" | "last_30_days";
+export type SalesPeriodId = "month" | "prior_mtd" | "last_month" | "last_30_days";
 
 export interface SalesDayPoint {
   date: string;
@@ -236,6 +236,8 @@ export interface SalesPeriodSummary {
   customers: number;
   average_order_value?: number | null;
   daily: SalesDayPoint[];
+  date_start?: string | null;
+  date_end?: string | null;
   sales_change_pct?: number | null;
   orders_change_pct?: number | null;
   items_change_pct?: number | null;

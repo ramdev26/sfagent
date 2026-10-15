@@ -487,6 +487,44 @@ class WooCommerceMerchant(MerchantBackend):
             return None if current == 0 else 100.0
         return round(((current - prior) / prior) * 100, 1)
 
+    @staticmethod
+    def _month_to_date_range(*, months_ago: int = 0) -> tuple[datetime, datetime, str]:
+        """Calendar month-to-date window. months_ago=1 → same day-span last month."""
+        today = datetime.now().date()
+        year = today.year
+        month = today.month - months_ago
+        while month <= 0:
+            month += 12
+            year -= 1
+        start = datetime(year, month, 1).date()
+        last_day = calendar.monthrange(year, month)[1]
+        end = start.replace(day=min(today.day, last_day))
+        label = f"{start.strftime('%b')} {start.day}–{end.day}"
+        if months_ago == 0:
+            title = f"This month ({label})"
+        elif months_ago == 1:
+            title = f"Past month to date ({label})"
+        else:
+            title = f"{start.strftime('%b %Y')} to date ({label})"
+        return start, end, title
+
+    def _attach_changes(self, block: dict[str, Any], prior: dict[str, Any] | None) -> None:
+        if not prior:
+            block["sales_change_pct"] = None
+            block["orders_change_pct"] = None
+            block["items_change_pct"] = None
+            block["aov_change_pct"] = None
+            return
+        block["sales_change_pct"] = self._pct_change(block["net_sales"], prior["net_sales"])
+        block["orders_change_pct"] = self._pct_change(float(block["orders"]), float(prior["orders"]))
+        block["items_change_pct"] = self._pct_change(float(block["items"]), float(prior["items"]))
+        if block["average_order_value"] is not None and prior["average_order_value"] is not None:
+            block["aov_change_pct"] = self._pct_change(
+                block["average_order_value"], prior["average_order_value"]
+            )
+        else:
+            block["aov_change_pct"] = None
+
     async def sales_analytics(self) -> dict[str, Any]:
         """Detailed sales analytics for the merchant portal Sales tab."""
         if not self._orders_cache:
@@ -495,31 +533,43 @@ class WooCommerceMerchant(MerchantBackend):
             except Exception:
                 logger.exception("order refresh for sales analytics failed")
 
+        mtd_start, mtd_end, mtd_label = self._month_to_date_range(months_ago=0)
+        prior_mtd_start, prior_mtd_end, prior_mtd_label = self._month_to_date_range(months_ago=1)
+
         month = self._summarize_sales_report(
-            await self._sales_report(period="month", days=None), label="This month"
+            await self._sales_report(
+                period="month",
+                date_min=mtd_start.isoformat(),
+                date_max=mtd_end.isoformat(),
+            ),
+            label=mtd_label,
+        )
+        prior_mtd = self._summarize_sales_report(
+            await self._sales_report(
+                date_min=prior_mtd_start.isoformat(),
+                date_max=prior_mtd_end.isoformat(),
+            ),
+            label=prior_mtd_label,
         )
         last_month = self._summarize_sales_report(
-            await self._sales_report(period="last_month", days=None), label="Last month"
+            await self._sales_report(period="last_month", days=None),
+            label="Last month (full)",
         )
         last_30 = self._summarize_sales_report(
-            await self._sales_report(days=30, period=None), label="Last 30 days"
+            await self._sales_report(days=30, period=None),
+            label="Last 30 days",
         )
 
-        for block, prior in ((month, last_month), (last_30, last_month)):
-            block["sales_change_pct"] = self._pct_change(block["net_sales"], prior["net_sales"])
-            block["orders_change_pct"] = self._pct_change(float(block["orders"]), float(prior["orders"]))
-            block["items_change_pct"] = self._pct_change(float(block["items"]), float(prior["items"]))
-            if block["average_order_value"] is not None and prior["average_order_value"] is not None:
-                block["aov_change_pct"] = self._pct_change(
-                    block["average_order_value"], prior["average_order_value"]
-                )
-            else:
-                block["aov_change_pct"] = None
+        # This MTD vs past MTD; past MTD vs full last month; 30d vs full last month.
+        self._attach_changes(month, prior_mtd)
+        self._attach_changes(prior_mtd, last_month)
+        self._attach_changes(last_30, last_month)
+        self._attach_changes(last_month, None)
 
-        last_month["sales_change_pct"] = None
-        last_month["orders_change_pct"] = None
-        last_month["items_change_pct"] = None
-        last_month["aov_change_pct"] = None
+        month["date_start"] = mtd_start.isoformat()
+        month["date_end"] = mtd_end.isoformat()
+        prior_mtd["date_start"] = prior_mtd_start.isoformat()
+        prior_mtd["date_end"] = prior_mtd_end.isoformat()
 
         top_month = await self._top_sellers(period="month")
         top_last = await self._top_sellers(period="last_month")
@@ -547,11 +597,13 @@ class WooCommerceMerchant(MerchantBackend):
             "default_period": "month",
             "periods": {
                 "month": month,
+                "prior_mtd": prior_mtd,
                 "last_month": last_month,
                 "last_30_days": last_30,
             },
             "top_sellers": {
                 "month": top_month,
+                "prior_mtd": top_last,
                 "last_month": top_last,
                 "last_30_days": top_month,
             },
@@ -559,8 +611,8 @@ class WooCommerceMerchant(MerchantBackend):
             "order_status_lifetime": order_totals,
             "note": (
                 "Sales, orders, shipping, and daily totals come from WooCommerce reports. "
-                "Payment and category mix use recent cached orders. Traffic/conversion need a "
-                "separate analytics product."
+                "Past month to date uses the same day-span last month (e.g. Sep 1–15). "
+                "Payment and category mix use recent cached orders."
             ),
         }
 
