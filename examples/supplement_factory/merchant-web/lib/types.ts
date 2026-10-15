@@ -211,6 +211,61 @@ export interface AlertsResponse {
   order_issues: OrderIssue[];
 }
 
+export type SalesPeriodId = "month" | "last_month" | "last_30_days";
+
+export interface SalesDayPoint {
+  date: string;
+  sales: number;
+  orders: number;
+  items: number;
+  shipping: number;
+  customers: number;
+}
+
+export interface SalesPeriodSummary {
+  label: string;
+  sales: number;
+  net_sales: number;
+  average_daily_sales: number;
+  orders: number;
+  items: number;
+  shipping: number;
+  refunds: number;
+  discount: number;
+  tax: number;
+  customers: number;
+  average_order_value?: number | null;
+  daily: SalesDayPoint[];
+  sales_change_pct?: number | null;
+  orders_change_pct?: number | null;
+  items_change_pct?: number | null;
+  aov_change_pct?: number | null;
+}
+
+export interface TopSellerRow {
+  listing_id: string;
+  title: string;
+  quantity: number;
+  estimated_revenue?: number | null;
+  category?: string | null;
+  image_url?: string | null;
+  price?: number | null;
+}
+
+export interface SalesAnalyticsResponse {
+  currency: string;
+  default_period: SalesPeriodId;
+  periods: Record<SalesPeriodId, SalesPeriodSummary>;
+  top_sellers: Record<SalesPeriodId, TopSellerRow[]>;
+  mix: {
+    payments: { method: string; orders: number; sales: number }[];
+    categories: { category: string; quantity: number; sales: number }[];
+    statuses_recent: { status: string; orders: number }[];
+  };
+  order_status_lifetime: { status: string; label: string; orders: number }[];
+  note?: string | null;
+}
+
 // --- Presentation payloads, as streamed after server enrichment ---
 
 export interface MetricEntry {

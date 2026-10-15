@@ -80,6 +80,9 @@ app.include_router(
         agent=merchant_agent,
         identity=IDENTITY,
         example_dir="supplement_factory",
+        portal_reads={
+            "/sales-analytics": merchant.sales_analytics,
+        },
     ),
     prefix="/api/merchant",
 )

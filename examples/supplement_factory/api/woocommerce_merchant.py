@@ -302,14 +302,22 @@ class WooCommerceMerchant(MerchantBackend):
                 break
         self._orders_cache = rows
 
-    async def _sales_report(self, days: int = 30) -> dict[str, Any] | None:
+    async def _sales_report(
+        self,
+        *,
+        days: int | None = 30,
+        period: str | None = None,
+    ) -> dict[str, Any] | None:
         """WooCommerce admin-aligned totals (not capped by order page fetches)."""
-        end = datetime.now().date()
-        start = end - timedelta(days=days - 1)
-        attempts: list[dict[str, Any]] = [
-            {"date_min": start.isoformat(), "date_max": end.isoformat()},
-            {"period": "month"},
-        ]
+        attempts: list[dict[str, Any]] = []
+        if period:
+            attempts.append({"period": period})
+        if days is not None:
+            end = datetime.now().date()
+            start = end - timedelta(days=days - 1)
+            attempts.append({"date_min": start.isoformat(), "date_max": end.isoformat()})
+        if not attempts:
+            attempts.append({"period": "month"})
         for params in attempts:
             try:
                 report = await self._get("/reports/sales", params=params)
@@ -321,6 +329,234 @@ class WooCommerceMerchant(MerchantBackend):
             if isinstance(report, dict):
                 return report
         return None
+
+    @staticmethod
+    def _num(value: Any, default: float = 0.0) -> float:
+        try:
+            return float(value if value is not None else default)
+        except (TypeError, ValueError):
+            return default
+
+    def _summarize_sales_report(self, report: dict[str, Any] | None, *, label: str) -> dict[str, Any]:
+        if not report:
+            return {
+                "label": label,
+                "sales": 0.0,
+                "net_sales": 0.0,
+                "average_daily_sales": 0.0,
+                "orders": 0,
+                "items": 0,
+                "shipping": 0.0,
+                "refunds": 0.0,
+                "discount": 0.0,
+                "tax": 0.0,
+                "customers": 0,
+                "average_order_value": None,
+                "daily": [],
+            }
+        sales = self._num(report.get("total_sales") or report.get("net_sales"))
+        net = self._num(report.get("net_sales") or report.get("total_sales"))
+        orders = int(self._num(report.get("total_orders")))
+        items = int(self._num(report.get("total_items")))
+        daily: list[dict[str, Any]] = []
+        customers = 0
+        totals = report.get("totals")
+        if isinstance(totals, dict):
+            for day, row in sorted(totals.items()):
+                if not isinstance(row, dict):
+                    continue
+                day_customers = int(self._num(row.get("customers")))
+                customers += day_customers
+                daily.append(
+                    {
+                        "date": day,
+                        "sales": round(self._num(row.get("sales")), 2),
+                        "orders": int(self._num(row.get("orders"))),
+                        "items": int(self._num(row.get("items"))),
+                        "shipping": round(self._num(row.get("shipping")), 2),
+                        "customers": day_customers,
+                    }
+                )
+        return {
+            "label": label,
+            "sales": round(sales, 2),
+            "net_sales": round(net, 2),
+            "average_daily_sales": round(self._num(report.get("average_sales")), 2),
+            "orders": orders,
+            "items": items,
+            "shipping": round(self._num(report.get("total_shipping")), 2),
+            "refunds": round(self._num(report.get("total_refunds")), 2),
+            "discount": round(self._num(report.get("total_discount")), 2),
+            "tax": round(self._num(report.get("total_tax")), 2),
+            "customers": customers,
+            "average_order_value": round(sales / orders, 2) if orders else None,
+            "daily": daily,
+        }
+
+    async def _top_sellers(self, *, period: str = "month", limit: int = 25) -> list[dict[str, Any]]:
+        try:
+            rows = await self._get("/reports/top_sellers", params={"period": period})
+        except Exception:
+            logger.exception("top_sellers failed period=%s", period)
+            return []
+        out: list[dict[str, Any]] = []
+        if not isinstance(rows, list):
+            return out
+        for row in rows[:limit]:
+            if not isinstance(row, dict):
+                continue
+            listing_id = str(row.get("product_id") or "")
+            listing = self._listings.get(listing_id)
+            qty = int(self._num(row.get("quantity")))
+            price = listing.price if listing else 0.0
+            out.append(
+                {
+                    "listing_id": listing_id,
+                    "title": _plain(row.get("name"), limit=200) or (listing.title if listing else listing_id),
+                    "quantity": qty,
+                    "estimated_revenue": round(price * qty, 2) if price else None,
+                    "category": listing.category if listing else None,
+                    "image_url": listing.image_url if listing else None,
+                    "price": price or None,
+                }
+            )
+        return out
+
+    def _order_mix_from_cache(self) -> dict[str, Any]:
+        """Payment methods and category mix from the warm order cache (recent window)."""
+        paid_statuses = {"processing", "completed", "on-hold"}
+        by_payment: dict[str, dict[str, float]] = defaultdict(lambda: {"orders": 0, "sales": 0.0})
+        by_status: dict[str, int] = defaultdict(int)
+        by_category: dict[str, dict[str, float]] = defaultdict(lambda: {"quantity": 0, "sales": 0.0})
+        for order in self._orders_cache:
+            status = str(order.get("status") or "unknown")
+            by_status[status] += 1
+            if status not in paid_statuses:
+                continue
+            total = self._num(order.get("total"))
+            method = (
+                _plain(order.get("payment_method_title"), limit=80)
+                or _plain(order.get("payment_method"), limit=40)
+                or "Unknown"
+            )
+            by_payment[method]["orders"] += 1
+            by_payment[method]["sales"] += total
+            for line in order.get("line_items") or []:
+                if not isinstance(line, dict):
+                    continue
+                pid = str(line.get("product_id") or line.get("variation_id") or "")
+                listing = self._listings.get(pid)
+                category = (listing.category if listing else None) or "Uncategorized"
+                qty = int(self._num(line.get("quantity"), 1))
+                line_total = self._num(line.get("total") or line.get("subtotal"))
+                if not line_total:
+                    line_total = self._num(line.get("price")) * qty
+                by_category[category]["quantity"] += qty
+                by_category[category]["sales"] += line_total
+        payments = [
+            {
+                "method": name,
+                "orders": int(stats["orders"]),
+                "sales": round(stats["sales"], 2),
+            }
+            for name, stats in sorted(by_payment.items(), key=lambda item: item[1]["sales"], reverse=True)
+        ]
+        categories = [
+            {
+                "category": name,
+                "quantity": int(stats["quantity"]),
+                "sales": round(stats["sales"], 2),
+            }
+            for name, stats in sorted(by_category.items(), key=lambda item: item[1]["sales"], reverse=True)[:12]
+        ]
+        statuses = [
+            {"status": name, "orders": count}
+            for name, count in sorted(by_status.items(), key=lambda item: item[1], reverse=True)
+        ]
+        return {"payments": payments, "categories": categories, "statuses_recent": statuses}
+
+    @staticmethod
+    def _pct_change(current: float, prior: float) -> float | None:
+        if prior == 0:
+            return None if current == 0 else 100.0
+        return round(((current - prior) / prior) * 100, 1)
+
+    async def sales_analytics(self) -> dict[str, Any]:
+        """Detailed sales analytics for the merchant portal Sales tab."""
+        if not self._orders_cache:
+            try:
+                await self._refresh_orders()
+            except Exception:
+                logger.exception("order refresh for sales analytics failed")
+
+        month = self._summarize_sales_report(
+            await self._sales_report(period="month", days=None), label="This month"
+        )
+        last_month = self._summarize_sales_report(
+            await self._sales_report(period="last_month", days=None), label="Last month"
+        )
+        last_30 = self._summarize_sales_report(
+            await self._sales_report(days=30, period=None), label="Last 30 days"
+        )
+
+        for block, prior in ((month, last_month), (last_30, last_month)):
+            block["sales_change_pct"] = self._pct_change(block["sales"], prior["sales"])
+            block["orders_change_pct"] = self._pct_change(float(block["orders"]), float(prior["orders"]))
+            block["items_change_pct"] = self._pct_change(float(block["items"]), float(prior["items"]))
+            if block["average_order_value"] is not None and prior["average_order_value"] is not None:
+                block["aov_change_pct"] = self._pct_change(
+                    block["average_order_value"], prior["average_order_value"]
+                )
+            else:
+                block["aov_change_pct"] = None
+
+        last_month["sales_change_pct"] = None
+        last_month["orders_change_pct"] = None
+        last_month["items_change_pct"] = None
+        last_month["aov_change_pct"] = None
+
+        top_month = await self._top_sellers(period="month")
+        top_last = await self._top_sellers(period="last_month")
+        mix = self._order_mix_from_cache()
+
+        order_totals: list[dict[str, Any]] = []
+        try:
+            totals = await self._get("/reports/orders/totals")
+            if isinstance(totals, list):
+                for row in totals:
+                    if isinstance(row, dict):
+                        order_totals.append(
+                            {
+                                "status": str(row.get("slug") or row.get("name") or ""),
+                                "label": _plain(row.get("name"), limit=60)
+                                or str(row.get("slug") or ""),
+                                "orders": int(self._num(row.get("total"))),
+                            }
+                        )
+        except Exception:
+            logger.exception("order status totals failed")
+
+        return {
+            "currency": "LKR",
+            "default_period": "month",
+            "periods": {
+                "month": month,
+                "last_month": last_month,
+                "last_30_days": last_30,
+            },
+            "top_sellers": {
+                "month": top_month,
+                "last_month": top_last,
+                "last_30_days": top_month,
+            },
+            "mix": mix,
+            "order_status_lifetime": order_totals,
+            "note": (
+                "Sales, orders, shipping, and daily totals come from WooCommerce reports. "
+                "Payment and category mix use recent cached orders. Traffic/conversion need a "
+                "separate analytics product."
+            ),
+        }
 
     def _map_listing(self, payload: dict[str, Any], *, details: bool) -> Listing | ListingDetails:
         listing_id = str(payload["id"])
@@ -423,7 +659,7 @@ class WooCommerceMerchant(MerchantBackend):
         period = period or "last_30_days"
         if not self._orders_cache:
             await self._refresh_orders()
-        report = await self._sales_report(30)
+        report = await self._sales_report(days=30)
         if report is not None:
             try:
                 sales = float(report.get("total_sales") or report.get("net_sales") or 0)

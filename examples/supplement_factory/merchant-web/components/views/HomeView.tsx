@@ -174,7 +174,7 @@ export default function HomeView({
   operator?: string;
   /** Prefills the composer; nothing is sent. */
   onAskAssistant: (text: string) => void;
-  onNavigate: (view: "orders" | "inventory") => void;
+  onNavigate: (view: "orders" | "inventory" | "sales") => void;
 }) {
   const [filter, setFilter] = useState<Filter>("all");
   const pending = useMemo(() => (data?.needs_attention.pending_changes ?? []).filter((change) => change.status === "staged"), [data]);

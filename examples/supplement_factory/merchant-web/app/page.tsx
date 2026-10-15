@@ -22,10 +22,11 @@ import CatalogView from "@/components/views/CatalogView";
 import HomeView from "@/components/views/HomeView";
 import InventoryView from "@/components/views/InventoryView";
 import OrdersView from "@/components/views/OrdersView";
+import SalesAnalyticsView from "@/components/views/SalesAnalyticsView";
 import { api, fetchOverview, UNREACHABLE } from "@/lib/api";
 import type { StagedChange } from "@/lib/types";
 
-type PortalView = "home" | "catalog" | "orders" | "inventory";
+type PortalView = "home" | "catalog" | "sales" | "orders" | "inventory";
 
 function StoreMark() {
   return (
@@ -87,6 +88,7 @@ export default function PortalPage() {
     return [
       { id: "home", label: "Home", icon: "home" },
       { id: "catalog", label: "Catalog", icon: "tag" },
+      { id: "sales", label: "Sales", icon: "chart" },
       { id: "orders", label: "Orders", icon: "inbox", attention: alerts?.order_issues || null },
       {
         id: "inventory",
@@ -139,6 +141,7 @@ export default function PortalPage() {
               />
             ) : null}
             {view === "catalog" ? <CatalogView refreshKey={refreshKey} onAskAssistant={askAssistant} /> : null}
+            {view === "sales" ? <SalesAnalyticsView refreshKey={refreshKey} onAskAssistant={askAssistant} /> : null}
             {view === "orders" ? (
               <OrdersView refreshKey={refreshKey} recentOrders={overview?.recent_orders ?? (overviewFailed ? [] : null)} onAskAssistant={askAssistant} />
             ) : null}
