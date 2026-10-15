@@ -131,14 +131,15 @@ class WooCommerceMerchant(MerchantBackend):
         await self._client.aclose()
 
     async def warm(self) -> None:
-        try:
-            await self._refresh_listings()
-        except Exception:
-            logger.exception("WooCommerce listing warm failed; continuing with empty catalog cache")
+        # Orders first so a /products outage can still seed the catalog from line items.
         try:
             await self._refresh_orders()
         except Exception:
             logger.exception("WooCommerce order warm failed; continuing with empty order cache")
+        try:
+            await self._refresh_listings()
+        except Exception:
+            logger.exception("WooCommerce listing warm failed; continuing with empty catalog cache")
 
     def warm_sync(self) -> None:
         import anyio
@@ -157,23 +158,114 @@ class WooCommerceMerchant(MerchantBackend):
 
     async def _refresh_listings(self, pages: int = 6) -> None:
         rows: list[dict[str, Any]] = []
-        # Prefer date order — popularity ranking has been 500ing on this store.
-        for page in range(1, pages + 1):
-            batch = await self._get(
-                "/products",
-                params={"per_page": 50, "page": page, "status": "publish", "orderby": "date", "order": "desc"},
+        try:
+            # Prefer date order — popularity ranking has been 500ing on this store.
+            for page in range(1, pages + 1):
+                batch = await self._get(
+                    "/products",
+                    params={
+                        "per_page": 50,
+                        "page": page,
+                        "status": "publish",
+                        "orderby": "date",
+                        "order": "desc",
+                    },
+                )
+                if not isinstance(batch, list) or not batch:
+                    break
+                rows.extend(row for row in batch if isinstance(row, dict))
+                if len(batch) < 50:
+                    break
+        except Exception:
+            logger.exception(
+                "WooCommerce /products list failed; building catalog from orders and top sellers"
             )
-            if not isinstance(batch, list) or not batch:
-                break
-            rows.extend(row for row in batch if isinstance(row, dict))
-            if len(batch) < 50:
-                break
+            await self._refresh_listings_from_orders_and_sellers()
+            return
         listings: dict[str, ListingDetails] = {}
         for row in rows:
             listing = self._map_listing(row, details=True)
             assert isinstance(listing, ListingDetails)
             listings[listing.listing_id] = listing
         self._listings = listings
+
+    async def _refresh_listings_from_orders_and_sellers(self) -> None:
+        """Degraded catalog when /products is down (common during WC critical errors)."""
+        listings: dict[str, ListingDetails] = {}
+
+        def upsert(
+            listing_id: str,
+            *,
+            title: str,
+            price: float = 0.0,
+            stock: int = 999,
+            sales_qty: int | None = None,
+        ) -> None:
+            if not listing_id or listing_id == "0":
+                return
+            existing = listings.get(listing_id)
+            if existing is not None:
+                updates: dict[str, Any] = {}
+                if price and (not existing.price or price > existing.price):
+                    updates["price"] = price
+                if title and len(title) > len(existing.title or ""):
+                    updates["title"] = title
+                if sales_qty is not None:
+                    updates["sales_last_30d"] = sales_qty
+                if updates:
+                    listings[listing_id] = existing.model_copy(update=updates)
+                return
+            listings[listing_id] = ListingDetails(
+                listing_id=listing_id,
+                title=title or f"Product {listing_id}",
+                status="active",
+                price=price,
+                currency="LKR",
+                stock=stock,
+                content_quality="needs_work",
+                short_description=(
+                    "Reconstructed from recent orders — WooCommerce /products is unavailable."
+                ),
+                sales_last_30d=sales_qty,
+            )
+
+        try:
+            sellers = await self._get("/reports/top_sellers", params={"period": "month"})
+        except Exception:
+            logger.exception("top_sellers fallback failed")
+            sellers = []
+        if isinstance(sellers, list):
+            for row in sellers:
+                if not isinstance(row, dict):
+                    continue
+                upsert(
+                    str(row.get("product_id") or ""),
+                    title=_plain(row.get("name"), limit=200) or f"Product {row.get('product_id')}",
+                    sales_qty=int(row.get("quantity") or 0),
+                )
+
+        if not self._orders_cache:
+            try:
+                await self._refresh_orders()
+            except Exception:
+                logger.exception("order refresh for catalog fallback failed")
+        for order in self._orders_cache:
+            for line in order.get("line_items") or []:
+                if not isinstance(line, dict):
+                    continue
+                pid = line.get("product_id") or line.get("variation_id") or 0
+                try:
+                    price = float(line.get("price") or 0)
+                except (TypeError, ValueError):
+                    price = 0.0
+                upsert(
+                    str(pid),
+                    title=_plain(line.get("name"), limit=200) or f"Product {pid}",
+                    price=price,
+                )
+
+        self._listings = listings
+        logger.info("Catalog fallback loaded %s listings from orders/top sellers", len(listings))
 
     async def _refresh_orders(self, days: int = 30, pages: int = 10) -> None:
         after = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%dT00:00:00")

@@ -298,11 +298,15 @@ def build_merchant_router(
 
     @router.get("/health")
     async def health() -> dict:
+        try:
+            listing_count = len(backend.all_listings())
+        except Exception:
+            listing_count = len(storefront.products)
         return {
             "ok": True,
             "store": storefront.store_name,
             "role": "merchant",
-            "listings": len(storefront.products),
+            "listings": listing_count,
             "skills": agent.skills.names,
             "model": agent.config.model,
         }
