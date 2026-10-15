@@ -305,11 +305,15 @@ class WooCommerceMerchant(MerchantBackend):
     async def _sales_report(
         self,
         *,
-        days: int | None = 30,
+        days: int | None = None,
         period: str | None = None,
+        date_min: str | None = None,
+        date_max: str | None = None,
     ) -> dict[str, Any] | None:
         """WooCommerce admin-aligned totals (not capped by order page fetches)."""
         attempts: list[dict[str, Any]] = []
+        if date_min and date_max:
+            attempts.append({"date_min": date_min, "date_max": date_max})
         if period:
             attempts.append({"period": period})
         if days is not None:
@@ -389,7 +393,8 @@ class WooCommerceMerchant(MerchantBackend):
             "discount": round(self._num(report.get("total_discount")), 2),
             "tax": round(self._num(report.get("total_tax")), 2),
             "customers": customers,
-            "average_order_value": round(sales / orders, 2) if orders else None,
+            # AOV on net sales matches WooCommerce Analytics.
+            "average_order_value": round(net / orders, 2) if orders else None,
             "daily": daily,
         }
 
@@ -500,7 +505,7 @@ class WooCommerceMerchant(MerchantBackend):
         )
 
         for block, prior in ((month, last_month), (last_30, last_month)):
-            block["sales_change_pct"] = self._pct_change(block["sales"], prior["sales"])
+            block["sales_change_pct"] = self._pct_change(block["net_sales"], prior["net_sales"])
             block["orders_change_pct"] = self._pct_change(float(block["orders"]), float(prior["orders"]))
             block["items_change_pct"] = self._pct_change(float(block["items"]), float(prior["items"]))
             if block["average_order_value"] is not None and prior["average_order_value"] is not None:
@@ -656,45 +661,65 @@ class WooCommerceMerchant(MerchantBackend):
     async def get_business_snapshot(
         self, session: MerchantSessionContext, period: str | None = None
     ) -> BusinessSnapshot:
-        period = period or "last_30_days"
+        """Home KPIs match WooCommerce Analytics month-to-date net sales."""
         if not self._orders_cache:
             await self._refresh_orders()
-        report = await self._sales_report(days=30)
+
+        end = datetime.now().date()
+        start = end.replace(day=1)
+        period_label = period or f"{start.isoformat()}/{end.isoformat()}"
+
+        report = await self._sales_report(
+            period="month",
+            date_min=start.isoformat(),
+            date_max=end.isoformat(),
+        )
+        sales_change_pct: float | None = None
+        orders_change_pct: float | None = None
+        compare_to: str | None = None
         if report is not None:
+            # Net sales matches Woo Analytics "Net sales"; gross includes shipping.
+            sales = self._num(report.get("net_sales") or report.get("total_sales"))
+            orders = int(self._num(report.get("total_orders")))
+            note = "Net sales, month to date — same basis as WooCommerce Analytics."
             try:
-                sales = float(report.get("total_sales") or report.get("net_sales") or 0)
-            except (TypeError, ValueError):
-                sales = 0.0
-            try:
-                orders = int(report.get("total_orders") or 0)
-            except (TypeError, ValueError):
-                orders = 0
-            note = (
-                "Sales and order counts from WooCommerce reports/sales (last 30 days). "
-                "Traffic and conversion need analytics."
-            )
+                prior_start = start.replace(year=start.year - 1)
+                prior_end = end.replace(year=end.year - 1)
+            except ValueError:
+                prior_start = prior_end = None
+            if prior_start and prior_end:
+                prior = await self._sales_report(
+                    date_min=prior_start.isoformat(),
+                    date_max=prior_end.isoformat(),
+                )
+                if prior is not None:
+                    prior_sales = self._num(prior.get("net_sales") or prior.get("total_sales"))
+                    prior_orders = int(self._num(prior.get("total_orders")))
+                    sales_change_pct = self._pct_change(sales, prior_sales)
+                    orders_change_pct = self._pct_change(float(orders), float(prior_orders))
+                    compare_to = f"{prior_start.isoformat()}/{prior_end.isoformat()}"
         else:
             paid = [
                 o
                 for o in self._orders_cache
                 if str(o.get("status")) in {"processing", "completed", "on-hold"}
             ]
-            sales = sum(float(o.get("total") or 0) for o in paid)
+            sales = sum(self._num(o.get("total")) for o in paid)
             orders = len(paid)
-            note = (
-                "Sales summed from a capped WooCommerce order fetch; "
-                "reports/sales was unavailable. Traffic/conversion need analytics."
-            )
+            note = "Reports unavailable; summed from a capped recent-order fetch."
         aov = round(sales / orders, 2) if orders else None
         alerts_list = await self.get_inventory_alerts(session)
         issues = await self.get_order_issues(session)
         return BusinessSnapshot(
-            period=period,
+            period=period_label,
+            compare_to=compare_to,
             sales=round(sales, 2),
             orders=orders,
             traffic=None,
             conversion_rate=None,
             average_order_value=aov,
+            sales_change_pct=sales_change_pct,
+            orders_change_pct=orders_change_pct,
             currency="LKR",
             alerts=AlertCounts(
                 low_stock=sum(1 for a in alerts_list if a.kind == "low_stock"),

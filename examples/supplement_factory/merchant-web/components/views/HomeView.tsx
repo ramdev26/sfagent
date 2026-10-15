@@ -227,13 +227,13 @@ export default function HomeView({
       <Panel title={formatPeriodLabel(snapshot.period)} subtitle={comparison ? `Against the ${comparison}` : snapshot.note ?? undefined} bodyClassName="pb-1">
         <StatStrip>
           <StatTile
-            label="Sales"
+            label="Net sales"
             value={formatMoney(snapshot.sales, currency, { whole: snapshot.sales >= 1000 })}
             changePct={snapshot.sales_change_pct}
             points={values(data.trends?.sales)}
             prior={values(data.trends_prior?.sales)}
-            onClick={() => onAskAssistant(askWhy("Sales", snapshot.sales_change_pct, comparison))}
-            ariaLabel="Sales: ask the assistant why"
+            onClick={() => onAskAssistant(askWhy("Net sales", snapshot.sales_change_pct, comparison))}
+            ariaLabel="Net sales: ask the assistant why"
           />
           <StatTile
             label="Orders"

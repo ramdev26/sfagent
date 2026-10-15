@@ -220,16 +220,16 @@ export default function SalesAnalyticsView({
           >
             <StatStrip>
               <StatTile
-                label="Gross sales"
-                value={formatMoney(period.sales, currency, { whole: period.sales >= 1000 })}
+                label="Net sales"
+                value={formatMoney(period.net_sales, currency, { whole: period.net_sales >= 1000 })}
                 changePct={period.sales_change_pct}
                 points={salesSeries}
                 onClick={() =>
                   onAskAssistant(
-                    `Break down ${period.label.toLowerCase()} gross sales of ${formatMoney(period.sales, currency)}. What drove the result?`,
+                    `Break down ${period.label.toLowerCase()} net sales of ${formatMoney(period.net_sales, currency)}. What drove the result?`,
                   )
                 }
-                ariaLabel="Gross sales: ask the assistant"
+                ariaLabel="Net sales: ask the assistant"
               />
               <StatTile
                 label="Orders"
@@ -267,11 +267,11 @@ export default function SalesAnalyticsView({
           </Panel>
 
           <div className="grid gap-4 xl:grid-cols-4">
-            <Panel title="Net sales" bodyClassName="px-[18px] pb-4 pt-1">
+            <Panel title="Gross sales" bodyClassName="px-[18px] pb-4 pt-1">
               <p className="text-[22px] font-semibold tabular-nums tracking-[-0.02em] text-(--ink)">
-                {formatMoney(period.net_sales, currency, { whole: period.net_sales >= 1000 })}
+                {formatMoney(period.sales, currency, { whole: period.sales >= 1000 })}
               </p>
-              <p className="mt-1 text-[12.5px] text-(--ink-soft)">After discounts, before shipping</p>
+              <p className="mt-1 text-[12.5px] text-(--ink-soft)">Includes shipping; Woo “total sales”</p>
             </Panel>
             <Panel title="Shipping collected" bodyClassName="px-[18px] pb-4 pt-1">
               <p className="text-[22px] font-semibold tabular-nums tracking-[-0.02em] text-(--ink)">
