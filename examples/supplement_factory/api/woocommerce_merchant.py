@@ -489,7 +489,11 @@ class WooCommerceMerchant(MerchantBackend):
 
     @staticmethod
     def _month_to_date_range(*, months_ago: int = 0) -> tuple[datetime, datetime, str]:
-        """Calendar month-to-date window. months_ago=1 → same day-span last month."""
+        """Month-to-date through today.
+
+        months_ago=0 → 1st of this month → today (e.g. Oct 1–15).
+        months_ago=1 → 1st of last month → today (e.g. Sep 1–Oct 15).
+        """
         today = datetime.now().date()
         year = today.year
         month = today.month - months_ago
@@ -497,15 +501,17 @@ class WooCommerceMerchant(MerchantBackend):
             month += 12
             year -= 1
         start = datetime(year, month, 1).date()
-        last_day = calendar.monthrange(year, month)[1]
-        end = start.replace(day=min(today.day, last_day))
-        label = f"{start.strftime('%b')} {start.day}–{end.day}"
-        if months_ago == 0:
-            title = f"This month ({label})"
-        elif months_ago == 1:
-            title = f"Past month to date ({label})"
+        end = today
+        if start.month == end.month and start.year == end.year:
+            span = f"{start.strftime('%b')} {start.day}–{end.day}"
         else:
-            title = f"{start.strftime('%b %Y')} to date ({label})"
+            span = f"{start.strftime('%b')} {start.day}–{end.strftime('%b')} {end.day}"
+        if months_ago == 0:
+            title = f"This month ({span})"
+        elif months_ago == 1:
+            title = f"Past month to date ({span})"
+        else:
+            title = f"Since {start.strftime('%b %Y')} ({span})"
         return start, end, title
 
     def _attach_changes(self, block: dict[str, Any], prior: dict[str, Any] | None) -> None:
@@ -611,8 +617,8 @@ class WooCommerceMerchant(MerchantBackend):
             "order_status_lifetime": order_totals,
             "note": (
                 "Sales, orders, shipping, and daily totals come from WooCommerce reports. "
-                "Past month to date uses the same day-span last month (e.g. Sep 1–15). "
-                "Payment and category mix use recent cached orders."
+                "Past month to date runs from the 1st of last month through today "
+                "(e.g. Sep 1–Oct 15). Payment and category mix use recent cached orders."
             ),
         }
 
